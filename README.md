@@ -1,150 +1,174 @@
 # model-effort-router
 
-Changes the reasoning effort of the main conversation and of each subagent with [Jev](https://typesafe.ai/blog/introducing-system-one-models-and-jev), and shows the model and the effort actually sent in the prompt footer: `Opus 5.5 / low · ● omms: connected`. The footer follows each request, so it moves when Jev changes the effort. The footer always shows the parent. A subagent opened from the tasks list shows its own model and effort in the band above the prompt (`⤷ Haiku 5.5 / high`); the footer keeps the parent's label, because Claude Code tells the footer nothing about which transcript is on screen.
+A Claude Code mod that picks the reasoning effort and the model for each task, and shows what was sent in the prompt footer.
 
-Merged on 2026-10-29 from two mods: `model-effort` (the footer) and `jev-model-router` 0.4.2 from claude-code-templates (MIT), with a local patch for subagent effort. The main conversation's model is never routed by default, because a model switch invalidates its prompt cache. Each subagent's model is routed once, at its start: a subagent begins with an empty context, so nothing cached is lost, and its model never changes mid-run. A fork keeps its parent's model and effort and is never routed. The log lines start with `[model-effort-router]`. A `⤷` before a label means its model or effort differs from the session's setting (the model and effort Claude Code builds each request with before the router changes it, for example `opus` / `high`). It stays as long as the difference does, for the parent and for a viewed subagent. The one-line status (`jev · balanced 0.88 · unchanged`) is off by default; turn on `showStatus` to see it. With `suggestDelegation` on, a task Jev rates for a cheaper tier than the parent (at `minDelegationConfidence`, default 0.6, and not risky) adds a hidden note to the prompt telling the parent to delegate it to a subagent and write that subagent's prompt; the parent may decline for follow-ups. A subagent the parent starts in that turn uses the surer of the prompt's and its brief's rating, and may move to a cheaper model at `minDelegationConfidence` instead of `minDowngradeConfidence`. At session start the footer reads the model's own effort (`modelSettings.<model>.effortLevel`, where `/effort` saves it) before the global `effortLevel`.
+The mod asks [Jev](https://typesafe.ai/blog/introducing-system-one-models-and-jev), TypeSafe's System One decision model, to rate each prompt. It then sets:
 
-A mod may load one hooks module and hook `turn.step` once, so `hooks/register.tsx` loads the router (`hooks/router.ts`), and the router writes the footer's state (`hooks/running.ts`) on every main-loop request it sends.
+- the reasoning effort of the main conversation
+- the model and the effort of each subagent, when the subagent starts
 
-The router's original notes follow.
+The footer shows the model and the effort of each request, for example `Opus 5.5 / low`.
 
+## Contents
 
-Picks the model and the reasoning effort each task runs with, using [Jev](https://typesafe.ai/blog/introducing-system-one-models-and-jev), TypeSafe's System One decision model: unstructured state in, a typed choice with a probability distribution out, no free-form text.
+- [Features](#features)
+- [Requirements](#requirements)
+- [Install](#install)
+- [Set up a backend](#set-up-a-backend)
+- [How it works](#how-it-works)
+- [Delegation to cheaper subagents](#delegation-to-cheaper-subagents)
+- [Effort ceiling and planning](#effort-ceiling-and-planning)
+- [Commands for one chat](#commands-for-one-chat)
+- [Options](#options)
+- [What you see in the transcript](#what-you-see-in-the-transcript)
+- [Troubleshooting](#troubleshooting)
+- [Privacy](#privacy)
+- [Development](#development)
+- [Credits and licence](#credits-and-licence)
 
-Two backends, chosen by whichever key is set:
+## Features
+
+- **Main conversation: effort only.** The mod does not change the main model by default. A model switch invalidates the prompt cache.
+- **Subagents: model and effort.** The mod sets them once, when the subagent starts. A subagent starts with an empty context, so a model choice loses no cache.
+- **Forks are left alone.** A fork shares its parent's cached context, so it keeps the parent's model and effort.
+- **Both directions.** A mechanical task can go to a cheaper model or a lower effort. A hard or risky task can go up.
+- **Footer label.** The footer shows the model and effort sent on each main-loop request. A `⤷` before the label means the router changed it from the session's setting.
+- **Subagent label.** When you open a subagent from the tasks list, the band above the prompt shows its own model and effort, for example `⤷ Haiku 5.5 / high`.
+- **Delegation hint.** Optional. When a task is cheap, the mod tells the main chat to hand it to a subagent on a cheaper model.
+- **Never blocks a turn.** If the backend fails or is slow, the request goes out unchanged.
+
+## Requirements
+
+- Claude Code 2.1.259 or later.
+- Function hooks turned on: `CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1`.
+- Optional: a TypeSafe API key or a Vercel AI Gateway key. Without a key, the mod uses Claude Code's built-in classifier.
+
+## Install
+
+1. Clone or copy this folder to `~/.claude/mods/model-effort-router`.
+2. Add the folder to `CLAUDE_CODE_PLUGIN_DIRS` in the `env` block of `~/.claude/settings.json`. Separate several folders with `:` on macOS and Linux.
+
+   ```json
+   {
+     "env": {
+       "CLAUDE_CODE_ENABLE_FUNCTION_HOOKS": "1",
+       "CLAUDE_CODE_PLUGIN_DIRS": "~/.claude/mods/model-effort-router"
+     }
+   }
+   ```
+
+3. Restart Claude Code. Claude Code reads environment variables only at startup.
+4. Check the mod:
+
+   ```sh
+   claude plugin validate ~/.claude/mods/model-effort-router
+   ```
+
+A mod loaded this way has the id `model-effort-router@inline`. Its options go under that key in `pluginConfigs` (see [Options](#options)).
+
+To try the mod for one session only, load it on the command line:
+
+```sh
+CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1 claude --plugin-dir ~/.claude/mods/model-effort-router
+```
+
+## Set up a backend
+
+The mod can use two backends. It picks the one whose key is set.
 
 | Backend | Endpoint | Model | Confidence |
 |---|---|---|---|
-| `typesafe` | `POST api.typesafe.ai/v1/systemone` | `jev-latest` | reported per answer |
-| `gateway` | `POST ai-gateway.vercel.sh/v4/ai/evaluation-model` | `typesafe-ai/jev` | derived from an optional distribution |
+| `typesafe` | `POST api.typesafe.ai/v1/systemone` | `jev-latest` | Reported per answer |
+| `gateway` | `POST ai-gateway.vercel.sh/v4/ai/evaluation-model` | `typesafe-ai/jev` | Derived from an optional distribution |
 
-TypeSafe's own API wins when both keys are set: it is the only one that reports a calibrated confidence, which is what the confidence bars below read. Set `provider` to force one, or to `builtin` to use neither. Each backend keeps its own URL and model option, so an override written for one is never sent to the other. A `provider` forced onto a backend whose key is missing degrades to the built-in classifier and says so once in the log.
+TypeSafe's own API wins when both keys are set, because only it reports a calibrated confidence. Set `provider` to force one backend, or to `builtin` to use neither. If you force a backend and its key is missing, the mod uses the built-in classifier and logs this once.
 
-Four switches, and they are not equally safe:
+Store a key in the system keychain instead of in `settings.json`:
+
+```sh
+claude plugin configure model-effort-router@inline --values-stdin
+```
+
+With no key set, the mod uses Claude Code's built-in classifier (`$.model.classify`). That classifier reports no confidence, so the mod only moves requests up, never down.
+
+## How it works
+
+1. **`prompt.submit`.** The mod sends your prompt to the backend before the turn starts.
+2. **The backend answers three questions:**
+   - `tier`: a choice between three descriptions of the work (mechanical, ordinary engineering, hard or high-stakes). The decision model never sees a model name.
+   - `effort`: a score on a four-level rubric for how much step-by-step reasoning the task needs.
+   - `risky`: whether the task touches production, money, credentials or state that cannot be undone.
+3. **`turn.step`.** The mod applies the decision to the turn's first model request and keeps it for the rest of that turn.
+4. **`agent.spawn`.** The mod rates each subagent's prompt and sets its model. It keeps the decision under the subagent's `agentId` and applies the effort at each of the subagent's requests. The Agent tool has no effort parameter.
+
+### Confidence bars
+
+A wrong upgrade and a wrong downgrade do not cost the same, so they have different bars:
+
+- **Spend more** (bigger model, more reasoning): needs `minUpgradeConfidence`, default 0.3. A wrong upgrade only costs money.
+- **Spend less**: needs `minDowngradeConfidence`, default 0.6. A wrong downgrade gives a task too little.
+- **Risky above 0.7**: the task gets the deep tier and real reasoning, whatever the confidence.
+- **No confidence reported** (built-in classifier, or the Gateway without a distribution): the mod only moves requests up.
+- **Unknown model id or numeric effort**: the model gets the upgrade bar, and a numeric effort is left alone.
+
+Any failure (a non-2xx response, a timeout, a malformed body, a thrown error) leaves the request as Claude Code built it.
+
+A slash command with nothing after it, such as `/simplify`, is not rated. The decision model would see only the command's name. With text after the name, the prompt is rated like any other.
+
+### Routing switches
 
 | Switch | What it sets | Default |
 |---|---|---|
-| `routeSubagentModel` | the model of each subagent, at `agent.spawn`, once per subagent | on |
-| `routeSubagentEffort` | the reasoning effort of each subagent, at its own `turn.step` | on |
-| `routeMainEffort` | the reasoning effort of the main conversation, at `turn.step` | on |
-| `routeMainModel` | the model of the main conversation, at `turn.step` | **off** |
+| `routeSubagentModel` | The model of each subagent, at `agent.spawn` | On |
+| `routeSubagentEffort` | The effort of each subagent, at its own `turn.step` | On |
+| `routeMainEffort` | The effort of the main conversation, at `turn.step` | On |
+| `routeMainModel` | The model of the main conversation, at `turn.step` | **Off** |
 
-A subagent starts with its own context, so routing its model costs nothing beyond the classification. Changing the main loop's *model* mid-session is the expensive one: it invalidates the prompt cache, and on a long context re-caching can cost more than the cheaper tier saves. Turn it on once you have measured your own sessions, not before.
+Keep `routeMainModel` off unless you have measured your own sessions. On a long context, re-caching after a model switch can cost more than the cheaper model saves.
 
-The Agent tool has no effort parameter, so a subagent's effort is set on its own requests: the decision made at its spawn is kept under its `agentId` and applied at each of its `turn.step`s. A fork is left alone, model and effort, because it shares its parent's cached context.
+### Model aliases
 
-**Both directions, both dimensions.** A task read as mechanical is routed down; one read as hard is routed up — model and effort alike.
+Each tier takes an alias (`haiku`, `sonnet`, `opus`) or a full model id. A subagent gets the name as given. The main loop needs an id, so the mod resolves an alias to a fixed id in `hooks/policy.ts`. Set a full id to pin a version. A decision for the tier the session already runs is not a change, so a session on a `[1m]` model keeps its 1M-context id.
 
-The prompt is classified at `prompt.submit`, which runs before the turn starts, and the decision is applied to the turn's first model request and reused by the rest of that turn.
+## Delegation to cheaper subagents
 
-**With no key configured the mod still works**: it falls back to the engine's own `$.model.classify`, which answers the same question with the small fast model. That path reports no confidence, so the threshold does not apply to it.
+Turn on `suggestDelegation` to use this.
 
-## What it asks
+1. Jev rates your prompt for a cheaper tier than the main chat, at `minDelegationConfidence` or higher, and not risky.
+2. The mod adds a hidden note to the prompt. The note tells the main chat to start a subagent with the Agent tool and to write its brief.
+3. The main chat writes the brief with the context the task needs. The main chat may decline for a reply to the current conversation, such as "yes" or an edit to work in progress.
+4. At `agent.spawn`, the subagent uses the surer of two ratings: the prompt's and the brief's. It may move to a cheaper model at `minDelegationConfidence` instead of `minDowngradeConfidence`.
+5. The subagent's answer comes back to the main chat as tool output. The main chat uses it and answers you.
 
-One request, three questions evaluated in parallel:
+The note is never added to background task notices, plugin prompts, scheduled prompts, messages from other sessions, slash commands, attachments or messages sent during a running turn.
 
-- `tier` — a `choice` between three descriptions of the *work* (mechanical and local / ordinary engineering / hard or high-stakes). The decision model never sees a model name.
-- `effort` — a `score` on a four-level rubric, for how much step-by-step reasoning the task needs.
-- `risky` — whether the task touches production, money, credentials, or state that cannot be undone. A `noul` on TypeSafe's API, a `boolean` on the Gateway: the same question under two names.
+## Effort ceiling and planning
 
-## How it decides
+The mod sends no more than `maxEffort` (default `high`).
 
-TypeSafe's API reports a `confidence` per answer. The Gateway's answer shape carries **no `confidence` field**, so on that backend confidence is read as the highest probability in the distribution — and that distribution is itself optional in the schema, in which case confidence is absent and the threshold does not fire.
+These are lifted to `planningEffort` (default `xhigh`):
 
-The two mistakes do not cost the same, so they do not clear the same bar:
+- plan mode
+- OpenSpec commands and skills (`propose`, `explore`, `new`, `continue`, `ff`, `update`, `verify`)
+- prompts that start with "plan"
+- the subagents they start
 
-- Spending **more** (a bigger model, more reasoning) needs `minUpgradeConfidence`, 0.3 by default. Being wrong costs money.
-- Spending **less** needs `minDowngradeConfidence`, 0.6 by default. Being wrong means a task handled by too small a model or too little thought.
-- `risky` above 0.7 takes the deep tier and real reasoning, past both bars. That one is not a confidence question.
-- A backend that reports no confidence at all — the Gateway without a distribution, or the built-in classifier — may only move a request **up**. Spending less on an unmeasured hunch is the bad trade.
-- A model id matching no tier, or a numeric effort (the caller's own scale), has no knowable direction: the model gets the gentler upgrade bar, and a numeric effort is left alone.
-
-Every other failure — a non-2xx response, a timeout, a malformed body, a thrown error — leaves the request exactly as the engine built it. The router never blocks a turn.
-
-A slash command with nothing after it (`/simplify`) is not classified: the decision model would see only the command's name, never what the command does. Its turn keeps the session's model and effort. With text after the name, the prompt is classified like any other.
-
-## What you see in the transcript
-
-With `logDecisions` on (the default), the router reports every step of its own
-work, because nothing else in Claude Code shows it: the model and effort it
-rewrites are parameters of each request, not the session's settings, so the
-status line, the header and the effort box never move whatever it decides.
-
-```
-[model-effort-router] ready on typesafe (https://api.typesafe.ai/v1/systemone); routing subagent model, main effort
-[model-effort-router] jev: tier fast (0.87) · effort 0.4 → low (0.71) · risky 0.02 · 249ms
-[model-effort-router] main loop → effort low: fast (confidence 0.87)
-[model-effort-router] jev: tier fast (0.41) · effort 0.4 → low (0.38) · risky 0.01 · 210ms
-[model-effort-router] main loop: kept opus/medium, wanted haiku/low (confidence 0.41)
-```
-
-- The first line appears once per session, the first time a hook runs. It is
-  the proof the module loaded and which backend answers it.
-- A `jev:` line is what the decision model replied, before any policy is
-  applied — the tier, the effort score and the risk, each with its confidence,
-  and how long the call took.
-- The line under it is what the policy then did. The last pair above is a
-  working router declining to act: it wanted to spend less but did not clear
-  `minDowngradeConfidence`.
-
-It also keeps a one-line status on screen, replaced as it goes:
-
-```
-jev · fast 0.87 → haiku/low
-jev · fast 0.41 · unchanged
-```
-
-`confidence n/d` means the backend reported no confidence, which the built-in
-classifier never does and the Gateway does whenever its probability
-distribution is absent; the `ready on` line says which one answered.
-
-**No lines at all** has three causes, and only the last is the module failing
-to load. Check them in this order:
-
-1. **You ran `claude -p` (or the SDK).** A headless run has no transcript and
-   no status row: every line still goes to the debug log,
-   `~/.claude/debug/<session-id>.txt` (a `.txt`, not a `.log`; `latest` is a
-   symlink to the newest), and an SDK host receives each one as `ui_log`. The
-   router is working; look there.
-2. **The plugin was never loaded.** Claude Code adopts a plugin from a
-   project's `.claude/skills/` (where `--mod` writes it) only once the
-   project is trusted: it is repository content, so an untrusted folder's
-   `.claude/` is not read at all, and `claude -p` never asks. Open `claude`
-   interactively in the folder and accept the trust prompt, or name the
-   plugin explicitly with `--plugin-dir` (see Install). `claude --debug`
-   settles it: a loaded module prints
-   `hooks module jev-model-router@skills-dir loaded (worker, …); events: prompt.submit,turn.step,agent.spawn`
-   (`@inline` when loaded with `--plugin-dir`); `Found N plugins` without it
-   means the plugin is not in the session.
-3. **Function hooks are off.** Without `CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1`
-   the debug log says `installed plugins' hooks modules not loaded: rollout
-   flag (tengu_plugin_hooks_modules) is off`. Set the flag; Claude Code must
-   be 2.1.259+.
-
-A `ready on the built-in classifier, no key set` line when you did set a key
-means the key sits under the wrong `pluginConfigs` entry: the key must match
-the plugin's id, which depends on how it was loaded (see Options).
-
-## Effort ceiling, planning and chat commands
-
-The router sends no more than `maxEffort` (default `high`). Plan mode, OpenSpec commands and skills (`propose`, `explore`, `new`, `continue`, `ff`, `update`, `verify`), prompts that start with "plan", and the subagents they start are lifted to `planningEffort` (default `xhigh`).
-
-`xhigh` costs many tokens. To stop it, use one of these in the mod's options:
+`xhigh` uses many tokens. To limit it, set one of these options:
 
 | Option | Value | Result |
 |---|---|---|
 | `planningEffort` | `high`, `medium` or `low` | Planning always runs at that effort. |
-| `planningEffort` | `off` | Planning is not lifted. It follows the router and the `maxEffort` ceiling like other work. Planning subagents also follow the router. |
+| `planningEffort` | `off` | Planning is not lifted. It follows the router and `maxEffort` like other work. |
 | `maxEffort` | `low`, `medium`, `high` or `xhigh` | The ceiling for all other work. |
-| `enabled` | `false` | The router is paused. The session's own model and effort go through unchanged. |
+| `enabled` | `false` | The router is paused. Requests go out unchanged. |
 
-### Commands for one chat
+## Commands for one chat
 
-A chat can override the options. A command name has no spaces, so each choice is its own command with dashes. The choice is saved per session and survives a resume.
+A chat can override the options. The choice is saved per session and survives a resume.
 
 | Command | Effect |
 |---|---|
-| `/router-off` | Pause the router for this chat. No classification, no subagent routing. The footer still shows what is sent. |
+| `/router-off` | Pause the router for this chat. The footer still shows what is sent. |
 | `/router-on` | Resume the router. This also overrides `enabled: false`. |
 | `/router-maxEffort-low` | Set the ceiling of this chat to `low`. |
 | `/router-maxEffort-medium` | Set the ceiling of this chat to `medium`. |
@@ -156,47 +180,60 @@ A chat can override the options. A command name has no spaces, so each choice is
 | `/router-planning-effort-high` | Plan at `high` in this chat. |
 | `/router-planning-effort-xhigh` | Plan at `xhigh` in this chat. |
 
-The router still routes up and down. `/router-maxEffort-<level>` only changes the highest effort it may send outside planning. `/router-planning-effort-<level>` only changes the effort of planning work. The two do not affect each other.
+The two command groups do not affect each other. `/router-maxEffort-<level>` changes the ceiling outside planning. `/router-planning-effort-<level>` changes only the effort of planning work.
 
-The old `/xhigh` and `/xhigh-off` commands are removed. Use `/router-maxEffort-xhigh` and `/router-planning-effort-xhigh`.
+Order of precedence for the main loop, highest first:
 
-Order of precedence for the main loop, highest first: `/router-off` (nothing changes), the planning effort (for planning turns), the chat ceiling, then `maxEffort`. In each pair, the chat command wins over the option.
+1. `/router-off` (nothing changes)
+2. The planning effort, for planning turns
+3. The chat ceiling
+4. `maxEffort`
 
-## Privacy
-
-With a key set, the prompt text leaves the machine and goes to whichever backend the key belongs to. The main-loop path sends the prompt; the subagent path sends the subagent's prompt, its description and its agent type. Nothing else. With no key set, nothing leaves the machine.
+In each pair, the chat command wins over the option.
 
 ## Options
 
-Set them in `/config` or in `pluginConfigs` (see below). An option you leave out uses its default.
+Set options in `/config`, or in `pluginConfigs` in your user settings (`~/.claude/settings.json`). Project settings are not read for plugin options. An option you leave out uses its default.
+
+```json
+{
+  "pluginConfigs": {
+    "model-effort-router@inline": {
+      "options": { "provider": "typesafe", "suggestDelegation": true }
+    }
+  }
+}
+```
+
+The key must match the plugin's id. Under the wrong key, every option stays at its default and the `ready on` log line says `no key set`.
 
 **Backend**
 
 | Option | Default | What it does |
 |---|---|---|
 | `provider` | `auto` | `auto` picks TypeSafe, then the Gateway, then the built-in classifier. Or force `typesafe`, `gateway` or `builtin`. |
-| `typesafeApiKey` | empty | Key for TypeSafe's API. Preferred, because only it reports a calibrated confidence. |
+| `typesafeApiKey` | empty | Key for TypeSafe's API. |
 | `gatewayApiKey` | empty | Key for the Vercel AI Gateway. |
 | `typesafeBaseUrl`, `typesafeModel` | empty | Override the TypeSafe URL (`https://api.typesafe.ai`) and model (`jev-latest`). |
 | `gatewayBaseUrl`, `gatewayModel` | empty | Override the Gateway URL and model (`typesafe-ai/jev`). |
-| `timeoutMs` | `800` | Wait this long for a decision. After that the request goes through unchanged. |
+| `timeoutMs` | `800` | How long to wait for a decision. After that, the request goes out unchanged. |
 
 **Models and confidence**
 
 | Option | Default | What it does |
 |---|---|---|
 | `fastModel`, `balancedModel`, `deepModel` | `haiku`, `sonnet`, `opus` | The model for each tier. Alias or full id. |
-| `disabledModels` | empty | Comma-separated models the router never picks, at any effort. `haiku` also matches full ids. A disabled tier falls to the nearest more capable enabled tier, then to a cheaper one. Empty disables nothing. |
-| `minUpgradeConfidence` | `0.3` | How sure Jev must be to spend more. Low, because a wrong upgrade only costs money. |
-| `minDowngradeConfidence` | `0.6` | How sure Jev must be to spend less. High, because a wrong downgrade gives a task too little. |
+| `disabledModels` | empty | Comma-separated models the router never picks. `haiku` also matches full ids. A disabled tier falls to the nearest more capable enabled tier, then to a cheaper one. |
+| `minUpgradeConfidence` | `0.3` | How sure Jev must be to spend more. |
+| `minDowngradeConfidence` | `0.6` | How sure Jev must be to spend less. |
 
 **What the router changes**
 
 | Option | Default | What it does |
 |---|---|---|
-| `enabled` | `true` | Master switch. Off: every request goes out as Claude Code built it. `/router-off` and `/router-on` override it per chat. |
+| `enabled` | `true` | Master switch. `/router-off` and `/router-on` override it per chat. |
 | `routeMainEffort` | `true` | Change the effort of the main chat. |
-| `routeMainModel` | `false` | Change the model of the main chat. Off, because a model switch invalidates the prompt cache. |
+| `routeMainModel` | `false` | Change the model of the main chat. |
 | `routeSubagentModel` | `true` | Pick the model of each subagent when it starts. |
 | `routeSubagentEffort` | `true` | Change the effort of each subagent. |
 
@@ -204,75 +241,96 @@ Set them in `/config` or in `pluginConfigs` (see below). An option you leave out
 
 | Option | Default | What it does |
 |---|---|---|
-| `maxEffort` | `high` | The highest effort sent outside planning. `low`, `medium`, `high` or `xhigh`. |
-| `planningEffort` | `xhigh` | The effort for plan mode, OpenSpec and planning subagents. `off` leaves planning unlifted. |
+| `maxEffort` | `high` | The highest effort sent outside planning. |
+| `planningEffort` | `xhigh` | The effort for planning work. `off` leaves planning unlifted. |
 
 **Delegation**
 
 | Option | Default | What it does |
 |---|---|---|
-| `suggestDelegation` | `false` | When Jev rates a task for a cheaper model, tell the main chat to hand it to a subagent. The main chat may decline. |
-| `minDelegationConfidence` | `0.6` | How sure Jev must be before that note is added. |
+| `suggestDelegation` | `false` | Tell the main chat to hand cheap tasks to a subagent. |
+| `minDelegationConfidence` | `0.6` | How sure Jev must be before the note is added. |
 
 **Display and logs**
 
 | Option | Default | What it does |
 |---|---|---|
 | `logDecisions` | `true` | Write each decision to the session log. |
-| `showStatus` | `false` | Show Jev's last decision on the status line, for example `jev · balanced 0.88 · unchanged`. The `⤷` in the footer already marks a change, so this is only for debugging. |
+| `showStatus` | `false` | Show Jev's last decision on the status line, for example `jev · balanced 0.88 · unchanged`. Use it for debugging. The footer's `⤷` already marks a change. |
 
-The three tiers take an alias (`haiku`, `sonnet`, `opus`) or a full model id.
-A subagent is spawned with the name as given, the way the Agent tool takes it;
-the main loop's request needs an id, so there an alias is resolved to the
-family's current id (`haiku` → `claude-haiku-4-5-20251001`, `sonnet` →
-`claude-sonnet-5`, `opus` → `claude-opus-5`). Set a full id to pin a
-specific version. A decision for the tier the session already runs is not a
-change, so a session on `claude-opus-5[1m]` keeps its 1M-context id.
+## What you see in the transcript
 
-Declared in `.claude-plugin/plugin.json` (`userConfig`). Set them in `/config`, in user settings (`~/.claude/settings.json`, not project settings), with `--settings <file>` or in managed settings:
+With `logDecisions` on, the mod logs each step. Claude Code shows nothing else about it: the mod changes parameters of each request, so the session's own model and effort settings never move.
 
-```json
-{ "pluginConfigs": { "jev-model-router@skills-dir": { "options": { "typesafeApiKey": "" } } } }
+```
+[model-effort-router] ready on typesafe (https://api.typesafe.ai/v1/systemone); routing subagent model, main effort
+[model-effort-router] jev: tier fast (0.87) · effort 0.4 → low (0.71) · risky 0.02 · 249ms
+[model-effort-router] main loop → effort low: fast (confidence 0.87)
+[model-effort-router] jev: tier fast (0.41) · effort 0.4 → low (0.38) · risky 0.01 · 210ms
+[model-effort-router] main loop: kept opus/medium, wanted haiku/low (confidence 0.41)
 ```
 
-The entry's key is the plugin's id, and the id follows how the plugin was
-loaded: `"jev-model-router@skills-dir"` when auto-loaded from `.claude/skills/`
-(the `--mod` install), `"jev-model-router"` with `--plugin-dir`. Under the
-wrong key every option stays at its default, and the `ready on` line reports
-`no key set`.
+- The `ready on` line appears once per session. It shows that the module loaded and which backend answers.
+- A `jev:` line is the decision model's reply, before the policy is applied.
+- The line under it is what the policy did. The last pair shows the router declining: it wanted to spend less, but the confidence was below `minDowngradeConfidence`.
+- `confidence n/d` means the backend reported no confidence.
 
-## Install
+## Troubleshooting
+
+**No log lines at all.** Check these causes in this order:
+
+1. **You ran `claude -p` or the SDK.** A headless run has no transcript. The lines go to the debug log, `~/.claude/debug/<session-id>.txt` (`latest` links to the newest). An SDK host receives each line as `ui_log`.
+2. **The mod did not load.** Run `claude --debug`. A loaded module prints `hooks module model-effort-router@inline loaded (…); events: …`. Check `CLAUDE_CODE_PLUGIN_DIRS`, then restart Claude Code.
+3. **Function hooks are off.** The debug log says `installed plugins' hooks modules not loaded: rollout flag (tengu_plugin_hooks_modules) is off`. Set `CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1`.
+
+**`ready on the built-in classifier, no key set` when you set a key.** The key is under the wrong `pluginConfigs` entry. Use `model-effort-router@inline`.
+
+**The footer shows the parent's label while you view a subagent.** This is expected. Claude Code does not tell the footer which transcript is on screen. The band above the prompt shows the subagent's label.
+
+## Privacy
+
+With a key set, prompt text goes to the backend that the key belongs to:
+
+- the main loop sends the prompt
+- the subagent path sends the subagent's prompt, its description and its agent type
+
+Nothing else is sent. With no key set, nothing leaves the machine.
+
+## Development
+
+### Layout
+
+| File | Purpose |
+|---|---|
+| `hooks/register.tsx` | The hooks module. Loads the router and draws the footer and the subagent band. |
+| `hooks/router.ts` | The hooks: `prompt.submit`, `turn.step`, `agent.spawn` and the chat commands. |
+| `hooks/policy.ts` | Pure decision rules: confidence bars, tiers, effort caps, the delegation note. |
+| `hooks/chat.ts` | Per-chat command state. |
+| `hooks/running.ts` | Footer state written on each main-loop request. |
+| `.claude-plugin/plugin.json` | Manifest and option declarations (`userConfig`). |
+| `types/index.d.ts` | Type declarations for the `$` API. |
+
+A mod may load one hooks module and hook `turn.step` once. For this reason, `register.tsx` loads `router.ts`, and `router.ts` writes the footer state.
+
+### Tests
 
 ```sh
-npx claude-code-templates@latest --mod productivity/jev-model-router
-CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1 claude
+claude plugin test .
+claude plugin validate .
 ```
 
-`--mod` writes the plugin to `.claude/skills/jev-model-router/` in the project,
-and Claude Code auto-loads it as `jev-model-router@skills-dir` **in a trusted
-project**: a folder's `.claude/` is repository content and is not read until
-you accept the trust prompt on the first interactive `claude` there (`-p`
-never asks, so a headless run in a fresh folder never sees it). The options
-then go under the `"jev-model-router@skills-dir"` key in `pluginConfigs` (see
-Options).
+`validate` prints every event the mod hooks and every `$` call it makes.
 
-For one session with hot reload, or in a folder you do not want to trust,
-name it on the command line instead — it loads as `jev-model-router@inline`
-and reads options from the `"jev-model-router"` key:
+### Notes
 
-```sh
-CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1 claude --plugin-dir .claude/skills/jev-model-router
-```
+- Mods are early access. The `$` API can change between Claude Code releases. The types follow Anthropic's declarations: https://github.com/anthropics/claude-code/tree/main/mods
+- A mod runs without `node_modules`. The mod talks to both backends over HTTP through `$.http.fetch`. The TypeSafe wire shape comes from `@typesafe-ai/sdk` v0.6.0. The Gateway's shape is experimental and undocumented; it comes from `@ai-sdk/gateway` v4.0.86 and `@ai-sdk/provider` v4.0.17. Either can change.
 
-Either way, `claude plugin validate .claude/skills/jev-model-router` prints
-every event it hooks and every `$` call it makes.
+## Credits and licence
 
-## Tests
+This mod merges two earlier mods (2026-10-29):
 
-```sh
-bun test cli-tool/components/mods/productivity/jev-model-router/tests
-```
+- `model-effort`, a local footer mod.
+- [`jev-model-router`](https://github.com/davila7/claude-code-templates) 0.4.2 from claude-code-templates, by Daniel (San) Ávila, MIT licence.
 
-**Early access.** Mods need Claude Code 2.1.259+ with `CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1`; the `$` API may change between releases. Typed against Anthropic's declarations: https://github.com/anthropics/claude-code/tree/main/mods
-
-A mod runs without `node_modules`, so neither `@typesafe-ai/sdk` nor the AI SDK is available here: both backends are spoken to over HTTP through `$.http.fetch`. The TypeSafe wire shape was read from `@typesafe-ai/sdk` v0.6.0; the Gateway's, which is `experimental` in the AI SDK (`experimental_evaluate`, 7.0.105+) and not documented publicly, from `@ai-sdk/gateway` v4.0.86 and `@ai-sdk/provider` v4.0.17. Either may change.
+Released under the MIT licence. See [LICENSE](LICENSE).
