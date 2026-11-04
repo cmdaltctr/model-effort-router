@@ -266,9 +266,9 @@ export function rankOf(model: string, tiers: Tiers): number | null {
  * options, and only a main-loop rewrite resolves them, here.
  */
 const ALIAS_IDS: Record<string, string> = {
-  haiku: 'claude-haiku-4-5-20251001',
-  sonnet: 'claude-sonnet-5',
-  opus: 'claude-opus-5',
+  haiku: 'claude-haiku-5-5',
+  sonnet: 'claude-sonnet-5-5',
+  opus: 'claude-opus-5-5',
 }
 
 /**
@@ -282,7 +282,7 @@ export function requestModelId(model: string): string {
 
 /**
  * Whether a model id or alias is on the disabled list. Case-insensitive
- * substring match, so `haiku` also covers `claude-haiku-4-5-20251001`.
+ * substring match, so `haiku` also covers `claude-haiku-5-5`.
  */
 export function isDisabled(model: string, disabled: readonly string[] | undefined): boolean {
   const lowered = model.toLowerCase()
