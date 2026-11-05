@@ -309,6 +309,15 @@ describe('subagents', () => {
     expect((await shown(await band($, 'a2')))).toBe('⤷ Sonnet 5.5 / medium')
   })
 
+  test('the band keeps a line another mod draws, below its own', async ($, on) => {
+    world(on, 'claude-opus-5-5', 'high')
+    engine(on)
+    on('ui.render', { component: 'AbovePrompt' }, () => ({ type: 'Text', props: {}, children: ['⎇ wt'] }) as any)
+    await $.session.start(SESSION)
+    await subagentStep($, 'a1', 'claude-haiku-5-5', 'high')
+    expect(await shown(await band($, 'a1'))).toBe('⤷ Haiku 5.5 / high⎇ wt')
+  })
+
   test('the band adds nothing on the main transcript or for an unknown agent', async ($, on) => {
     world(on, 'claude-opus-5-5', 'high')
     engine(on)

@@ -33,7 +33,7 @@ The footer shows the model and the effort of each request, for example `Opus 5.5
 - **Forks are left alone.** A fork shares its parent's cached context, so it keeps the parent's model and effort.
 - **Both directions.** A mechanical task can go to a cheaper model or a lower effort. A hard or risky task can go up.
 - **Footer label.** The footer shows the model and effort sent on each main-loop request. A `⤷` before the label means the router changed it from the session's setting.
-- **Subagent label.** When you open a subagent from the tasks list, the band above the prompt shows its own model and effort, for example `⤷ Haiku 5.5 / high`.
+- **Subagent label.** When you open a subagent from the tasks list, the band above the prompt shows its own model and effort, for example `⤷ Haiku 5.5 / high`. A line that another mod draws in the band (for example worktree-tracker) stays, below this label.
 - **Delegation hint.** Optional. When a task is cheap, the mod tells the main chat to hand it to a subagent on a cheaper model.
 - **Never blocks a turn.** If the backend fails or is slow, the request goes out unchanged.
 

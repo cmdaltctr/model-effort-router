@@ -126,13 +126,20 @@ export const register: Register = (on, options) => {
 
   // The band above the prompt is told whose transcript is on screen, so a
   // subagent opened from the tasks list shows its own model and effort here.
+  // What the band already draws (another mod's line) stays, below this one.
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     const agentId = e.props.view.agentId
     if (!agentId || e.props.hasSurvey) return next(e)
     const label = subagentLabel(await read($, running), await read($, subagents), agentId)
     if (!label) return next(e)
+    const inner = await next(e)
     const { Box, Text } = $.ui.resolve(e)
-    return <Box flexDirection="row">{labelParts(label, Text)}</Box>
+    return (
+      <Box flexDirection="column">
+        <Box flexDirection="row">{labelParts(label, Text)}</Box>
+        {inner}
+      </Box>
+    )
   })
 
   on('ui.render', { component: 'SessionMode' }, async ($, e, next) => {
