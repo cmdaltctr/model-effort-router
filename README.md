@@ -49,7 +49,12 @@ The footer shows the model and the effort of each request, for example `Opus 5.5
 
 ## Install
 
-1. Clone or copy this folder to `~/.claude/mods/model-effort-router`.
+1. Clone the repository to `~/.claude/mods/model-effort-router`:
+
+   ```sh
+   git clone https://github.com/cmdaltctr/model-effort-router.git ~/.claude/mods/model-effort-router
+   ```
+
 2. Add the folder to `CLAUDE_CODE_PLUGIN_DIRS` in the `env` block of `~/.claude/settings.json`. Separate several folders with `:` on macOS and Linux.
 
    ```json
@@ -75,6 +80,37 @@ To try the mod for one session only, load it on the command line:
 ```sh
 CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1 claude --plugin-dir ~/.claude/mods/model-effort-router
 ```
+
+To update the mod, run `git -C ~/.claude/mods/model-effort-router pull`, then restart Claude Code.
+
+<details>
+<summary><strong>Agent instructions: let a coding agent install the mod</strong></summary>
+
+Paste this prompt into Claude Code or another coding agent. The agent does the steps above and stops before it restarts anything.
+
+```text
+Install the Claude Code mod "model-effort-router" from
+https://github.com/cmdaltctr/model-effort-router. Do these steps in order:
+
+1. Check that `claude --version` is 2.1.259 or later. If it is older, stop and tell me.
+2. If ~/.claude/mods/model-effort-router exists, run `git pull` in it.
+   Otherwise run:
+   git clone https://github.com/cmdaltctr/model-effort-router.git ~/.claude/mods/model-effort-router
+3. Read ~/.claude/settings.json. Make a backup copy next to it before you change it.
+4. In the "env" block, set "CLAUDE_CODE_ENABLE_FUNCTION_HOOKS" to "1".
+5. In the "env" block, add ~/.claude/mods/model-effort-router to "CLAUDE_CODE_PLUGIN_DIRS".
+   If the variable already has folders, append the new folder with ":" (";" on Windows).
+   Do not remove the folders that are there. Do not add the folder twice.
+6. Keep all other keys in settings.json unchanged. Check that the file is valid JSON.
+7. Run `claude plugin validate ~/.claude/mods/model-effort-router` and show me the result.
+8. Do not write an API key into any file. If I want the TypeSafe backend, tell me to run
+   `claude plugin configure model-effort-router@inline --values-stdin` myself.
+9. Tell me to restart Claude Code. Environment variables load only at startup.
+```
+
+After the restart, run `claude --debug` and look for `hooks module model-effort-router@inline loaded`. See [Troubleshooting](#troubleshooting) if the line is missing.
+
+</details>
 
 ## Set up a backend
 
