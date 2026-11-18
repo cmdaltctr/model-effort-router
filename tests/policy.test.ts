@@ -19,6 +19,9 @@ import {
   bareCommand,
   delegationNote,
   moreConfident,
+  namedEffort,
+  offLimitsForSubagents,
+  subagentFallback,
 } from '../hooks/policy.ts'
 import type { Decision, PolicyConfig } from '../hooks/policy.ts'
 
@@ -482,4 +485,48 @@ test('the surer of two decisions wins; a missing one never does', () => {
   expect(moreConfident(null, brief)).toBe(brief)
   expect(moreConfident(turn, null)).toBe(turn)
   expect(moreConfident(decide('fast', null), brief)).toBe(brief)
+})
+
+// Fable and Mythos run the main chat only. They rank above Opus, so every
+// tier counts as cheaper, and no subagent may run on them.
+test('Fable and Mythos rank above Opus', () => {
+  expect(rankOf('claude-fable-5-2', config.tiers)).toBe(3)
+  expect(rankOf('claude-mythos-1', config.tiers)).toBe(3)
+})
+
+test('on a Fable parent, the hint fires for every tier, hard tasks included', () => {
+  expect(delegationNote(decide('fast', 0.66), 'claude-fable-5-2', config, 0.6)).toContain('haiku')
+  expect(delegationNote(decide('balanced', 0.66), 'claude-fable-5-2', config, 0.6)).toContain('sonnet')
+  expect(delegationNote(decide('deep', 0.9), 'claude-fable-5-2', config, 0.6)).toContain('opus')
+  expect(delegationNote({ ...decide('deep', 0.9), risky: 0.9 }, 'claude-fable-5-2', config, 0.6)).toBeNull()
+})
+
+test('the hint tells the parent to keep a model or effort the user named', () => {
+  expect(delegationNote(decide('fast', 0.66), 'claude-opus-5-5', config, 0.6)).toContain('effort: <level>')
+})
+
+test('Fable and Mythos are off limits for subagents', () => {
+  expect(offLimitsForSubagents('claude-fable-5-2')).toBe(true)
+  expect(offLimitsForSubagents('fable')).toBe(true)
+  expect(offLimitsForSubagents('claude-mythos-1')).toBe(true)
+  expect(offLimitsForSubagents('claude-opus-5-5')).toBe(false)
+  expect(offLimitsForSubagents('sonnet')).toBe(false)
+})
+
+test('a child kept off Fable takes Jev\'s pick, however unsure, or Sonnet', () => {
+  const noHaiku = { ...config, disabledModels: ['haiku'] }
+  expect(subagentFallback(decide('balanced', 0.2), noHaiku)).toBe('sonnet')
+  expect(subagentFallback(decide('fast', 0.2), noHaiku)).toBe('sonnet')
+  expect(subagentFallback(decide('deep', 0.2), noHaiku)).toBe('opus')
+  expect(subagentFallback({ ...decide('fast', 0.9), risky: 0.9 }, noHaiku)).toBe('opus')
+  expect(subagentFallback(null, noHaiku)).toBe('sonnet')
+})
+
+test('an effort written in the brief is read', () => {
+  expect(namedEffort('Check the links. effort: high')).toBe('high')
+  expect(namedEffort('Run this at xhigh effort.')).toBe('xhigh')
+  expect(namedEffort('Effort low, please')).toBe('low')
+  expect(namedEffort('high-effort refactor of the high street module')).toBeNull()
+  expect(namedEffort('check the effort estimate')).toBeNull()
+  expect(namedEffort(undefined)).toBeNull()
 })

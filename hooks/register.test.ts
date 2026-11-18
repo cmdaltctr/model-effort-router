@@ -530,6 +530,101 @@ describe('delegated subagents', () => {
   })
 })
 
+describe('subagents of a Fable parent', () => {
+  const OPTIONS = { provider: 'typesafe', typesafeApiKey: 'test-key', minDowngradeConfidence: 0.8, disabledModels: 'haiku' }
+
+  /**
+   * Starts one subagent under a Fable parent. `jev` is Jev's answer, or
+   * 'fail' for a call that throws. Returns the model the subagent started with
+   * and the effort its first request was sent with.
+   */
+  async function child(
+    $: any,
+    on: any,
+    jev: { tier: string; confidence: number; risky?: number } | 'fail',
+    spawn: Record<string, unknown> = {},
+    commands: string[] = [],
+    parent = 'claude-fable-5-2',
+  ) {
+    let model: unknown = 'unset'
+    let effort: unknown = 'unset'
+    world(on, parent, 'medium')
+    mock.clock(on)
+    on('http.fetch', () => {
+      if (jev === 'fail') throw new Error('offline')
+      return { value: { status: 200, ok: true, headers: {}, text: jevAnswer(jev.tier, jev.confidence, 1, jev.risky) } } as any
+    })
+    on('ui.log', () => ({ value: undefined }) as any)
+    on('agent.spawn', (_$: any, e: any) => {
+      model = e.model
+      return { model: e.model ?? e.parentModel, agentId: 'a1' } as any
+    })
+    on('turn.step', async function* (_$: any, e: any) {
+      if (e.agentId) effort = e.effort
+      return { turnId: e.turnId, index: e.index, answer: '', toolUses: [], stopReason: 'end_turn', usage: null }
+    })
+    await $.session.start(SESSION)
+    for (const command of commands) await $.command.run({ command, args: '' } as any)
+    await $.agent.spawn({
+      prompt: 'the brief',
+      description: 'a task',
+      subagentType: 'general-purpose',
+      parentModel: parent,
+      ...spawn,
+    } as any)
+    for await (const _ of $.turn.step({ turnId: 't-a1', index: 0, agentId: 'a1', model: String(model ?? parent), effort: 'medium', messageCount: 1 }))
+      void _
+    return { model, effort }
+  }
+
+  test('an unsure Jev answer still moves the child off Fable, to Jev\'s pick', { options: OPTIONS }, async ($, on) => {
+    expect((await child($, on, { tier: 'balanced', confidence: 0.2 })).model).toBe('sonnet')
+  })
+
+  test('an unsure hard rating goes to Opus', { options: OPTIONS }, async ($, on) => {
+    expect((await child($, on, { tier: 'deep', confidence: 0.2 })).model).toBe('opus')
+  })
+
+  test('a sure easy rating clears the step down from Fable', { options: OPTIONS }, async ($, on) => {
+    expect((await child($, on, { tier: 'fast', confidence: 0.5 })).model).toBe('sonnet')
+  })
+
+  test('no Jev answer: Sonnet at high effort', { options: OPTIONS }, async ($, on) => {
+    expect(await child($, on, 'fail')).toEqual({ model: 'sonnet', effort: 'high' })
+  })
+
+  test('/router-off: Sonnet, effort left as Claude Code set it', { options: OPTIONS }, async ($, on) => {
+    expect(await child($, on, 'fail', {}, ['router-off'])).toEqual({ model: 'sonnet', effort: 'medium' })
+  })
+
+  test('a parent that names Fable still gets Jev\'s pick', { options: OPTIONS }, async ($, on) => {
+    expect((await child($, on, { tier: 'deep', confidence: 0.9 }, { model: 'fable' })).model).toBe('opus')
+  })
+
+  test('a Plan child with the deep tier off does not fall back to Fable', { options: { ...OPTIONS, disabledModels: 'opus' } }, async ($, on) => {
+    expect((await child($, on, { tier: 'deep', confidence: 0.9 }, { subagentType: 'Plan' })).model).toBe('sonnet')
+  })
+
+  test('a forked child is left alone', { options: OPTIONS }, async ($, on) => {
+    expect((await child($, on, { tier: 'fast', confidence: 0.9 }, { fork: true })).model).toBeUndefined()
+  })
+
+  test('a model the parent names is kept, not moved by Jev', { options: OPTIONS }, async ($, on) => {
+    const result = await child($, on, { tier: 'fast', confidence: 0.95 }, { model: 'opus' }, [], 'claude-opus-5-5')
+    expect(result.model).toBe('opus')
+  })
+
+  test('"inherit" is not a named model', { options: OPTIONS }, async ($, on) => {
+    const result = await child($, on, { tier: 'fast', confidence: 0.95 }, { model: 'inherit' }, [], 'claude-opus-5-5')
+    expect(result.model).toBe('sonnet')
+  })
+
+  test('an effort named in the brief wins, above the cap too', { options: OPTIONS }, async ($, on) => {
+    const result = await child($, on, { tier: 'fast', confidence: 0.95 }, { prompt: 'the brief. effort: xhigh', model: 'opus' }, [], 'claude-opus-5-5')
+    expect(result).toEqual({ model: 'opus', effort: 'xhigh' })
+  })
+})
+
 /** A TypeSafe System One answer: the tier, an effort score and the risk. */
 function jevAnswer(tier: string, confidence: number, effort: number, risky = 0.01) {
   return JSON.stringify({

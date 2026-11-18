@@ -17,6 +17,8 @@ The footer shows the model and the effort of each request, for example `Opus 5.5
 - [Set up a backend](#set-up-a-backend)
 - [How it works](#how-it-works)
 - [Delegation to cheaper subagents](#delegation-to-cheaper-subagents)
+- [Fable in the main chat](#fable-in-the-main-chat)
+- [Naming a model or effort](#naming-a-model-or-effort)
 - [Effort ceiling and planning](#effort-ceiling-and-planning)
 - [Commands for one chat](#commands-for-one-chat)
 - [Options](#options)
@@ -31,6 +33,8 @@ The footer shows the model and the effort of each request, for example `Opus 5.5
 - **Main conversation: effort only.** The mod does not change the main model by default. A model switch invalidates the prompt cache.
 - **Subagents: model and effort.** The mod sets them once, when the subagent starts. A subagent starts with an empty context, so a model choice loses no cache.
 - **Forks are left alone.** A fork shares its parent's cached context, so it keeps the parent's model and effort.
+- **No subagent runs on Fable or Mythos.** These models run the main chat only. See [Fable in the main chat](#fable-in-the-main-chat).
+- **Your choice wins.** A model the main chat names for a subagent, or an effort written in its brief, is kept.
 - **Both directions.** A mechanical task can go to a cheaper model or a lower effort. A hard or risky task can go up.
 - **Footer label.** The footer shows the model and effort sent on each main-loop request. A `⤷` before the label means the router changed it from the session's setting.
 - **Subagent label.** When you open a subagent from the tasks list, the band above the prompt shows its own model and effort, for example `⤷ Haiku 5.5 / high`. A line that another mod draws in the band (for example worktree-tracker) stays, below this label.
@@ -141,6 +145,24 @@ Turn on `suggestDelegation` to use this.
 5. The subagent's answer comes back to the main chat as tool output. The main chat uses it and answers you.
 
 The note is never added to background task notices, plugin prompts, scheduled prompts, messages from other sessions, slash commands, attachments or messages sent during a running turn.
+
+## Fable in the main chat
+
+Fable and Mythos rank one step above Opus. They run the main chat only. Before each subagent starts, the mod checks the model it would run on. If that model is Fable or Mythos, the mod changes it:
+
+| Case | Subagent model | Subagent effort |
+|---|---|---|
+| Jev answered, at any confidence | Jev's tier (deep when risky) | From Jev |
+| Jev gave no answer (timeout or failure) | Sonnet (the balanced tier) | High |
+| `/router-off` | Sonnet (the balanced tier) | As Claude Code set it |
+| The main chat named Fable | Jev's tier, or Sonnet with no answer | From Jev |
+
+Forks are not changed. On a Fable main chat, the delegation note fires for every tier. A hard task suggests an Opus subagent. A risky task gets no note. See `docs/adr/007-fable-off-limits-for-subagents-named-choices-win.md`.
+
+## Naming a model or effort
+
+- **Model.** When the main chat passes a model to the Agent tool (`model: "opus"`), the mod keeps it. Jev does not move it. `model: inherit` counts as no model. Fable is still changed.
+- **Effort.** The Agent tool has no effort field. Write the effort in the brief as `effort: high` or `xhigh effort`. The mod uses it in place of Jev's effort, also above `maxEffort`. This works only while the router is on.
 
 ## Effort ceiling and planning
 
@@ -309,6 +331,7 @@ Nothing else is sent. With no key set, nothing leaves the machine.
 | `hooks/running.ts` | Footer state written on each main-loop request. |
 | `.claude-plugin/plugin.json` | Manifest and option declarations (`userConfig`). |
 | `types/index.d.ts` | Type declarations for the `$` API. |
+| `docs/adr/` | Decision records: why the mod works the way it does. Start at `ADR_README.md`. |
 
 A mod may load one hooks module and hook `turn.step` once. For this reason, `register.tsx` loads `router.ts`, and `router.ts` writes the footer state.
 

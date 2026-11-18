@@ -239,9 +239,10 @@ export function effortRank(effort: string | number | undefined): number | null {
 
 /**
  * Where a model id sits on the tier ladder, by matching it against the
- * configured tier names first and then the family words. Null when it matches
- * none, in which case the change is treated as an upgrade rather than guessed
- * at: an unrecognised id gets the gentler threshold, never the strict one.
+ * configured tier names first and then the family words. Fable and Mythos sit
+ * one step above Opus. Null when it matches none, in which case the change is
+ * treated as an upgrade rather than guessed at: an unrecognised id gets the
+ * gentler threshold, never the strict one.
  */
 export function rankOf(model: string, tiers: Tiers): number | null {
   const lowered = model.toLowerCase()
@@ -253,7 +254,37 @@ export function rankOf(model: string, tiers: Tiers): number | null {
   if (lowered.includes('haiku')) return 0
   if (lowered.includes('sonnet')) return 1
   if (lowered.includes('opus')) return 2
+  if (offLimitsForSubagents(lowered)) return TIER_ORDER.length
   return null
+}
+
+/** Whether a model runs the main chat only: Fable and Mythos never run a subagent. */
+export function offLimitsForSubagents(model: string): boolean {
+  return /fable|mythos/i.test(model)
+}
+
+/**
+ * The model for a subagent that would otherwise run on Fable or Mythos: Jev's
+ * tier however unsure (deep when risky), or the balanced tier with no answer.
+ */
+export function subagentFallback(decision: Decision | null, config: PolicyConfig): string {
+  const risky = decision?.risky != null && decision.risky > 0.7
+  const tier: Tier = !decision ? 'balanced' : risky ? 'deep' : decision.tier
+  const usable = usableTier(tier, config)
+  return usable ? config.tiers[usable] : 'sonnet'
+}
+
+/**
+ * An effort the parent wrote into a subagent's brief ("effort: high",
+ * "xhigh effort"). The Agent tool has no effort field, so the brief carries it.
+ */
+export function namedEffort(text: string | undefined): Effort | null {
+  if (!text) return null
+  const levels = EFFORT_ORDER.join('|')
+  const match =
+    new RegExp(`\\beffort\\s*[:=]?\\s*(${levels})\\b`, 'i').exec(text) ??
+    new RegExp(`(?<![-\\w])(${levels})\\s+effort\\b`, 'i').exec(text)
+  return match ? (match[1]!.toLowerCase() as Effort) : null
 }
 
 /**
@@ -500,7 +531,8 @@ export function delegationNote(
     `(${model}, confidence ${decision.confidence.toFixed(2)}), cheaper than this conversation's model. ` +
     `Delegate it: start a subagent with the Agent tool and write its prompt with the context it needs; ` +
     `the router gives that subagent the cheaper model. Do it here only when it is a reply to this ` +
-    `conversation (a yes, a follow-up, an edit to work in progress).`
+    `conversation (a yes, a follow-up, an edit to work in progress). If the user named a model or ` +
+    `effort for this work, use theirs: pass the model to the Agent tool and write "effort: <level>" in the prompt.`
   )
 }
 

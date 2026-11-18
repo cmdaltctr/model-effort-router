@@ -66,6 +66,9 @@ import {
   isOpenSpec,
   isPlanningPrompt,
   moreConfident,
+  namedEffort,
+  offLimitsForSubagents,
+  subagentFallback,
 } from './policy.ts'
 import { showSent, showSubagent } from './running.ts'
 import { applyRouterCommand, chatOf, routerOn, ROUTER_COMMANDS } from './chat.ts'
@@ -185,6 +188,10 @@ export const registerRouter: Register = (on, options) => {
   // routing a turn on a decision made for a different prompt.
   const pending = pendingDecisions()
   const agents = agentDecisions()
+  // Efforts the parent wrote into a subagent's brief; these beat Jev and the cap.
+  const namedEfforts = new Map<string, Effort>()
+  // A subagent kept off Fable with no answer from Jev: balanced, high effort.
+  const NO_ANSWER: Decision = { tier: 'balanced', confidence: null, risky: null, effort: 2, effortConfidence: null }
   // Said once, the first time a hook runs. A router that loaded and one that
   // never loaded are otherwise told apart only by the absence of later lines,
   // and absence is not evidence: the policy leaves most turns alone anyway.
@@ -317,6 +324,12 @@ export const registerRouter: Register = (on, options) => {
         await showSubagent($, e.agentId, e.model, e.effort)
         return yield* next(e)
       }
+      const named = namedEfforts.get(e.agentId)
+      if (named) {
+        const out = { ...e, effort: named }
+        await showSubagent($, e.agentId, out.model, out.effort)
+        return yield* next(out)
+      }
       const decision = routeSubagentEffort ? agents.get(e.agentId) : undefined
       const capped = (out: typeof e) => ({
         ...out,
@@ -419,7 +432,14 @@ export const registerRouter: Register = (on, options) => {
       }
     }
 
-    if (!(await routerOn($, held, enabledSetting))) return next(e)
+    // Fable and Mythos run the main chat only. Every way a subagent starts goes
+    // through this, /router-off included; a fork keeps its parent's model.
+    const offFable = (spawn: typeof e, decision: Decision | null): typeof e =>
+      spawn.fork || !offLimitsForSubagents(spawn.model ?? spawn.parentModel)
+        ? spawn
+        : { ...spawn, model: subagentFallback(decision, policy) }
+
+    if (!(await routerOn($, held, enabledSetting))) return next(offFable(e, null))
 
     // Planning subagents always run on the deep tier, whatever Jev would say.
     // A fork inherits its parent's model; `model` is ignored for it.
@@ -430,12 +450,12 @@ export const registerRouter: Register = (on, options) => {
       if (logDecisions) {
         $.ui.log(`[model-effort-router] ${e.subagentType}: planning → ${model ?? 'parent model'}/${planningDeep(override)}`)
       }
-      const started = await next(model ? { ...e, model } : e)
+      const started = await next(offFable(model ? { ...e, model } : e, null))
       if ('agentId' in started && started.agentId) planningAgents.add(started.agentId)
       return started
     }
 
-    if (!routeSubagent || e.fork) return next(e)
+    if (!routeSubagent || e.fork) return next(offFable(e, null))
 
     if (!unusableReported) {
       unusableReported = true
@@ -503,20 +523,32 @@ export const registerRouter: Register = (on, options) => {
       ? { ...policy, minDowngradeConfidence: Math.min(policy.minDowngradeConfidence, minDelegationConfidence) }
       : policy
 
-    // The subagent's own model wins when the caller named one; otherwise it
-    // would inherit the parent's, so that is what a change is measured from.
-    // The Agent tool takes no effort; that is applied at the subagent's own
-    // turn.step, from the decision kept under the agentId the spawn returns.
-    const current = e.model ?? e.parentModel
+    // A model the caller named is kept as it is (Fable aside); otherwise the
+    // subagent would inherit the parent's, so that is what a change is
+    // measured from. The Agent tool takes no effort; that is applied at the
+    // subagent's own turn.step, from the decision kept under its agentId, or
+    // from an effort the brief names.
+    const namedModel = e.model && e.model !== 'inherit' ? e.model : undefined
+    const current = namedModel ?? e.parentModel
     const { model: routed, reason } = route(decision, { model: current }, spawnPolicy)
-    const model = routeSubagentModel ? routed : null
+    const model = routeSubagentModel && !namedModel ? routed : null
     if (logDecisions && routeSubagentModel) {
-      $.ui.log(`[model-effort-router] ${e.subagentType}${model ? ` → ${model}` : ''}: ${reason}`)
+      const why = namedModel ? `kept the named ${namedModel}` : reason
+      $.ui.log(`[model-effort-router] ${e.subagentType}${model ? ` → ${model}` : ''}: ${why}`)
     }
-    const started = await next(model ? { ...e, model } : e)
-    if (routeSubagentEffort && decision && 'agentId' in started && started.agentId) {
-      agents.put(started.agentId, decision)
+    const spawn = offFable(model ? { ...e, model } : e, decision)
+    const fellBack = spawn.model !== (model ?? e.model)
+    if (logDecisions && fellBack) {
+      $.ui.log(`[model-effort-router] ${e.subagentType} → ${spawn.model}: subagents never run on Fable`)
     }
+    const started = await next(spawn)
+    const agentId = 'agentId' in started ? started.agentId : undefined
+    if (!agentId) return started
+    const effort = namedEffort(e.prompt)
+    if (effort) namedEfforts.set(agentId, effort)
+    // No answer from Jev and kept off Fable: the fallback runs at high effort.
+    const kept = decision ?? (fellBack ? NO_ANSWER : null)
+    if (routeSubagentEffort && kept) agents.put(agentId, kept)
     return started
   })
 }
