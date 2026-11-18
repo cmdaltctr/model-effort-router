@@ -11,6 +11,7 @@ The footer shows the model and the effort of each request, for example `Opus 5.5
 
 ## Contents
 
+- [Agent instructions](#agent-instructions)
 - [Features](#features)
 - [Requirements](#requirements)
 - [Install](#install)
@@ -27,6 +28,44 @@ The footer shows the model and the effort of each request, for example `Opus 5.5
 - [Privacy](#privacy)
 - [Development](#development)
 - [Credits and licence](#credits-and-licence)
+
+<a id="agent-instructions"></a>
+
+<details>
+<summary><strong>Agent instructions: let a coding agent install the mod</strong></summary>
+
+Paste this prompt into Claude Code or another coding agent. The agent installs the mod, turns on auto-update and stops before it restarts anything.
+
+```text
+Install the Claude Code mod "model-effort-router" from the marketplace at
+https://github.com/cmdaltctr/model-effort-router. Do these steps in order:
+
+1. Run `claude --version`. If it is older than 2.1.292, stop and tell me.
+2. Run `claude plugin list`. If model-effort-router@inline is listed, or
+   ~/.claude/settings.json has the folder in CLAUDE_CODE_PLUGIN_DIRS, stop and tell me.
+   A folder copy replaces the marketplace copy.
+3. Run:
+   claude plugin install model-effort-router --marketplace cmdaltctr/model-effort-router
+4. Run `claude plugin list` and show me that model-effort-router@model-effort-router is installed.
+5. Turn on auto-update. Claude Code keeps it off for marketplaces that Anthropic does not run.
+   a. Copy ~/.claude/settings.json to ~/.claude/settings.json.bak.
+   b. In ~/.claude/settings.json, find "extraKnownMarketplaces" -> "model-effort-router".
+      The install in step 3 wrote this entry. Add "autoUpdate": true to it, next to "source":
+      "model-effort-router": {
+        "source": { "source": "github", "repo": "cmdaltctr/model-effort-router" },
+        "autoUpdate": true
+      }
+   c. Change nothing else in the file. Check that the file is valid JSON.
+6. Do not write an API key into any file. Tell me to add my TypeSafe key myself:
+   in a Claude Code session, run
+   /plugin configure model-effort-router@model-effort-router
+   and paste the key into the TypeSafe API key field.
+7. Tell me to restart Claude Code.
+```
+
+After the restart, run `claude --debug` and look for `hooks module model-effort-router@model-effort-router loaded`. See [Troubleshooting](#troubleshooting) if the line is missing.
+
+</details>
 
 ## Features
 
@@ -50,6 +89,8 @@ The footer shows the model and the effort of each request, for example `Opus 5.5
 
 This repository is also a plugin marketplace. Install from it, and Claude Code can update the mod for you.
 
+To let a coding agent do these steps, use the [agent instructions](#agent-instructions) at the top of this page.
+
 1. Install the mod from your shell:
 
    ```sh
@@ -63,6 +104,8 @@ This repository is also a plugin marketplace. Install from it, and Claude Code c
    2. Open the **Marketplaces** tab.
    3. Select `model-effort-router`.
    4. Select **Enable auto-update**.
+
+   Or add `"autoUpdate": true` to the `model-effort-router` entry under `extraKnownMarketplaces` in `~/.claude/settings.json`. The install writes that entry.
 3. Add your TypeSafe key. Inside a Claude Code session, run:
 
    ```text
@@ -118,35 +161,6 @@ Use this method to change the code. The mod then has the id `model-effort-router
 3. Restart Claude Code.
 
 A folder copy replaces a marketplace copy with the same name. Do not use both methods on one machine. To try the mod for one session only, run `claude --plugin-dir ~/.claude/mods/model-effort-router`. On Claude Code older than 2.1.287, also set `CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1`.
-
-<details>
-<summary><strong>Agent instructions: let a coding agent install the mod</strong></summary>
-
-Paste this prompt into Claude Code or another coding agent. The agent installs the mod and stops before it restarts anything.
-
-```text
-Install the Claude Code mod "model-effort-router" from the marketplace at
-https://github.com/cmdaltctr/model-effort-router. Do these steps in order:
-
-1. Run `claude --version`. If it is older than 2.1.292, stop and tell me.
-2. Run `claude plugin list`. If model-effort-router@inline is listed, or
-   ~/.claude/settings.json has the folder in CLAUDE_CODE_PLUGIN_DIRS, stop and tell me.
-   A folder copy replaces the marketplace copy.
-3. Run:
-   claude plugin install model-effort-router --marketplace cmdaltctr/model-effort-router
-4. Run `claude plugin list` and show me that model-effort-router@model-effort-router is installed.
-5. Do not edit settings.json. Do not write an API key into any file.
-   Tell me to add my TypeSafe key myself: in a Claude Code session, run
-   /plugin configure model-effort-router@model-effort-router
-   and paste the key into the TypeSafe API key field.
-6. Tell me to turn on auto-update: /plugin, Marketplaces tab, model-effort-router,
-   Enable auto-update.
-7. Tell me to restart Claude Code.
-```
-
-After the restart, run `claude --debug` and look for `hooks module model-effort-router@model-effort-router loaded`. See [Troubleshooting](#troubleshooting) if the line is missing.
-
-</details>
 
 ## Set up a backend
 
