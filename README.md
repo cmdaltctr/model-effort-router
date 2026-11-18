@@ -34,7 +34,7 @@ The footer shows the model and the effort of each request, for example `Opus 5.5
 <details>
 <summary><strong>Agent instructions: let a coding agent install the mod</strong></summary>
 
-Paste this prompt into Claude Code or another coding agent. The agent installs the mod, turns on auto-update and stops before it restarts anything.
+Paste this prompt into Claude Code or another coding agent. The agent installs the mod and turns on auto-update. It then asks you to add your TypeSafe key with `/plugin configure`, and stops before it restarts anything.
 
 ```text
 Install the Claude Code mod "model-effort-router" from the marketplace at
@@ -56,10 +56,15 @@ https://github.com/cmdaltctr/model-effort-router. Do these steps in order:
         "autoUpdate": true
       }
    c. Change nothing else in the file. Check that the file is valid JSON.
-6. Do not write an API key into any file. Tell me to add my TypeSafe key myself:
-   in a Claude Code session, run
-   /plugin configure model-effort-router@model-effort-router
-   and paste the key into the TypeSafe API key field.
+6. Ask me to add my TypeSafe key. Stop and show me exactly this:
+     Type this command in the Claude Code prompt and press Enter:
+     /plugin configure model-effort-router@model-effort-router
+     Paste your TypeSafe key into the "TypeSafe API key" field and save.
+     Reply "done" when you have saved it, or "skip" to run without a key.
+   Wait for my reply. Do not ask me to paste the key into this chat.
+   Do not run the command for me, and do not write the key into any file.
+   If I reply "skip", tell me the mod uses Claude Code's built-in classifier,
+   which only raises effort and never lowers it.
 7. Tell me to restart Claude Code.
 ```
 
