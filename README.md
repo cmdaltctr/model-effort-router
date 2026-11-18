@@ -176,7 +176,7 @@ With no key set, the mod uses Claude Code's built-in classifier (`$.model.classi
 A wrong upgrade and a wrong downgrade do not cost the same, so they have different bars:
 
 - **Spend more** (bigger model, more reasoning): needs `minUpgradeConfidence`, default 0.3. A wrong upgrade only costs money.
-- **Spend less**: needs `minDowngradeConfidence`, default 0.6. A wrong downgrade gives a task too little.
+- **Spend less**: needs `minDowngradeConfidence`, default 0.8. A wrong downgrade gives a task too little.
 - **Risky above 0.7**: the task gets the deep tier and real reasoning, whatever the confidence.
 - **No confidence reported** (built-in classifier, or the Gateway without a distribution): the mod only moves requests up.
 - **Unknown model id or numeric effort**: the model gets the upgrade bar, and a numeric effort is left alone.
@@ -202,7 +202,7 @@ Each tier takes an alias (`haiku`, `sonnet`, `opus`) or a full model id. A subag
 
 ## Delegation to cheaper subagents
 
-Turn on `suggestDelegation` to use this.
+This is on by default. Set `suggestDelegation` to `false` to turn it off.
 
 1. Jev rates your prompt for a cheaper tier than the main chat, at `minDelegationConfidence` or higher, and not risky.
 2. The mod adds a hidden note to the prompt. The note tells the main chat to start a subagent with the Agent tool and to write its brief.
@@ -234,18 +234,18 @@ Forks are not changed. On a Fable main chat, the delegation note fires for every
 
 The mod sends no more than `maxEffort` (default `high`).
 
-These are lifted to `planningEffort` (default `xhigh`):
+These are lifted to `planningEffort` (default `high`):
 
 - plan mode
 - OpenSpec commands and skills (`propose`, `explore`, `new`, `continue`, `ff`, `update`, `verify`)
 - prompts that start with "plan"
 - the subagents they start
 
-`xhigh` uses many tokens. To limit it, set one of these options:
+To change the planning effort or the ceiling, set one of these options. `xhigh` gives deeper planning but uses many tokens.
 
 | Option | Value | Result |
 |---|---|---|
-| `planningEffort` | `high`, `medium` or `low` | Planning always runs at that effort. |
+| `planningEffort` | `xhigh`, `high`, `medium` or `low` | Planning always runs at that effort. |
 | `planningEffort` | `off` | Planning is not lifted. It follows the router and `maxEffort` like other work. |
 | `maxEffort` | `low`, `medium`, `high` or `xhigh` | The ceiling for all other work. |
 | `enabled` | `false` | The router is paused. Requests go out unchanged. |
@@ -281,6 +281,21 @@ In each pair, the chat command wins over the option.
 
 ## Options
 
+### Defaults changed in 0.2.3
+
+Version 0.2.3 changed four defaults. An option you set yourself keeps your value.
+
+| Option | Default from 0.2.3 | Default before 0.2.3 | What the new default does | To get the old behaviour |
+|---|---|---|---|---|
+| `disabledModels` | `haiku` | empty | No subagent runs on Haiku. A fast task goes to Sonnet. | Set `disabledModels` to `""`. |
+| `minDowngradeConfidence` | `0.8` | `0.6` | Jev must be 80% sure before the router spends less. Fewer wrong downgrades. | Set `minDowngradeConfidence` to `0.6`. |
+| `planningEffort` | `high` | `xhigh` | Planning runs at `high`. Uses fewer tokens. | Set `planningEffort` to `xhigh`. |
+| `suggestDelegation` | `true` | `false` | The main chat gets a note to hand cheap tasks to a subagent. | Set `suggestDelegation` to `false`. |
+
+All other defaults are unchanged. The tables below list every option.
+
+### Set an option
+
 Set options in `/config`, or in `pluginConfigs` in your user settings (`~/.claude/settings.json`). Project settings are not read for plugin options. An option you leave out uses its default.
 
 ```json
@@ -313,9 +328,9 @@ The key must match the plugin's id. Under the wrong key, every option stays at i
 | Option | Default | What it does |
 |---|---|---|
 | `fastModel`, `balancedModel`, `deepModel` | `haiku`, `sonnet`, `opus` | The model for each tier. Alias or full id. |
-| `disabledModels` | empty | Comma-separated models the router never picks. `haiku` also matches full ids. A disabled tier falls to the nearest more capable enabled tier, then to a cheaper one. |
+| `disabledModels` | `haiku` | Comma-separated models the router never picks. `haiku` also matches full ids. A disabled tier falls to the nearest more capable enabled tier, then to a cheaper one. Set an empty value (`""`) to allow every model. |
 | `minUpgradeConfidence` | `0.3` | How sure Jev must be to spend more. |
-| `minDowngradeConfidence` | `0.6` | How sure Jev must be to spend less. |
+| `minDowngradeConfidence` | `0.8` | How sure Jev must be to spend less. |
 
 **What the router changes**
 
@@ -332,13 +347,13 @@ The key must match the plugin's id. Under the wrong key, every option stays at i
 | Option | Default | What it does |
 |---|---|---|
 | `maxEffort` | `high` | The highest effort sent outside planning. |
-| `planningEffort` | `xhigh` | The effort for planning work. `off` leaves planning unlifted. |
+| `planningEffort` | `high` | The effort for planning work. `off` leaves planning unlifted. |
 
 **Delegation**
 
 | Option | Default | What it does |
 |---|---|---|
-| `suggestDelegation` | `false` | Tell the main chat to hand cheap tasks to a subagent. |
+| `suggestDelegation` | `true` | Tell the main chat to hand cheap tasks to a subagent. |
 | `minDelegationConfidence` | `0.6` | How sure Jev must be before the note is added. |
 
 **Display and logs**

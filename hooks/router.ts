@@ -118,7 +118,7 @@ export const registerRouter: Register = (on, options) => {
   const showStatus = flag('showStatus', false)
   // Suggest a subagent to the parent when Jev wants a cheaper model than it
   // runs on; off by default.
-  const suggestDelegation = flag('suggestDelegation', false)
+  const suggestDelegation = flag('suggestDelegation', true)
   const minDelegationConfidence = number('minDelegationConfidence', 0.6)
   // The decision of the last prompt whose parent was told to delegate; lent to
   // the subagents the main loop starts until the next prompt replaces it.
@@ -133,7 +133,7 @@ export const registerRouter: Register = (on, options) => {
   const maxEffort = text('maxEffort', 'high') as Effort
   // `off` leaves plan mode, OpenSpec and planning subagents unlifted: they
   // follow the router and the ceiling like any other work.
-  const planningSetting = text('planningEffort', 'xhigh') as Effort | 'off'
+  const planningSetting = text('planningEffort', 'high') as Effort | 'off'
   // The `enabled` setting is the default; /router-off and /router-on override it per chat.
   const enabledSetting = flag('enabled', true)
 
@@ -173,12 +173,13 @@ export const registerRouter: Register = (on, options) => {
       balanced: text('balancedModel', 'sonnet'),
       deep: text('deepModel', 'opus'),
     },
-    disabledModels: text('disabledModels', '')
+    // An empty string is a choice here (allow every model), not "unset".
+    disabledModels: (typeof options.disabledModels === 'string' ? options.disabledModels : 'haiku')
       .split(',')
       .map(entry => entry.trim())
       .filter(Boolean),
     minUpgradeConfidence: number('minUpgradeConfidence', 0.3),
-    minDowngradeConfidence: number('minDowngradeConfidence', 0.6),
+    minDowngradeConfidence: number('minDowngradeConfidence', 0.8),
   }
 
   // The classification waiting for the turn that reads its prompt, and what

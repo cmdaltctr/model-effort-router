@@ -183,7 +183,7 @@ describe('model and effort', () => {
   }
 
   test('planning is lifted to the planning effort by default', async ($, on) => {
-    expect(await planningEffort($, on, 'medium')).toBe('xhigh')
+    expect(await planningEffort($, on, 'medium')).toBe('high')
   })
 
   test('planningEffort off caps planning at the normal ceiling', { options: { planningEffort: 'off' } }, async ($, on) => {
@@ -207,7 +207,7 @@ describe('model and effort', () => {
   })
 
   test('the chat ceiling does not change the planning effort', async ($, on) => {
-    expect(await planningEffort($, on, 'medium', ['router-maxEffort-low'])).toBe('xhigh')
+    expect(await planningEffort($, on, 'medium', ['router-maxEffort-low'])).toBe('high')
   })
 
   // The router changes the request, not the session's setting, so the footer
@@ -440,7 +440,7 @@ describe('delegation note', () => {
 
   test(
     'with suggestDelegation on, a task Jev rates for Haiku carries the note',
-    { options: { provider: 'typesafe', typesafeApiKey: 'test-key', suggestDelegation: true } },
+    { options: { provider: 'typesafe', typesafeApiKey: 'test-key', suggestDelegation: true, disabledModels: '' } },
     async ($, on) => {
       const context = await contextOf($, on)
       expect(context).toContain('haiku')
@@ -457,8 +457,16 @@ describe('delegation note', () => {
   )
 
   test(
-    'off by default: no note',
+    'on by default: a cheap task carries the note',
     { options: { provider: 'typesafe', typesafeApiKey: 'test-key' } },
+    async ($, on) => {
+      expect(await contextOf($, on)).toContain('subagent')
+    },
+  )
+
+  test(
+    'suggestDelegation off: no note',
+    { options: { provider: 'typesafe', typesafeApiKey: 'test-key', suggestDelegation: false } },
     async ($, on) => {
       expect(await contextOf($, on)).toBe('')
     },
@@ -497,7 +505,7 @@ describe('delegated subagents', () => {
     return model
   }
 
-  const OPTIONS = { provider: 'typesafe', typesafeApiKey: 'test-key', suggestDelegation: true, minDowngradeConfidence: 0.8 }
+  const OPTIONS = { provider: 'typesafe', typesafeApiKey: 'test-key', suggestDelegation: true, minDowngradeConfidence: 0.8, disabledModels: '' }
 
   test('a Plan subagent always starts on Opus, whatever Jev rates it', { options: OPTIONS }, async ($, on) => {
     expect(await spawnedModel($, on, 0.94, { subagentType: 'Plan' })).toBe('opus')
@@ -513,6 +521,10 @@ describe('delegated subagents', () => {
 
   test('a delegated turn below 0.8 but above the delegation bar still gets Haiku', { options: OPTIONS }, async ($, on) => {
     expect(await spawnedModel($, on, 0.74)).toBe('haiku')
+  })
+
+  test('by default Haiku is off: a fast task goes to Sonnet', { options: { provider: 'typesafe', typesafeApiKey: 'test-key' } }, async ($, on) => {
+    expect(await spawnedModel($, on, 0.94)).toBe('sonnet')
   })
 
   test('without a delegation note, the brief\'s own rating decides', { options: OPTIONS }, async ($, on) => {
