@@ -12,7 +12,7 @@ This directory records the significant decisions made for the model-effort-route
 | [004](./004-effort-ceiling-and-planning-lift.md) | Effort ceiling and planning lift | 2026-10-29 | Accepted |
 | [005](./005-delegate-through-a-note-to-the-parent.md) | Delegate through a note to the parent, not mod-spawned subagents | 2026-10-29 | Accepted |
 | [006](./006-footer-shows-parent-band-shows-subagent.md) | The footer shows the parent; the band shows a viewed subagent | 2026-10-29 | Accepted |
-| [007](./007-fable-off-limits-for-subagents-named-choices-win.md) | Fable is off limits for subagents; a named model or effort wins | 2026-11-17 | Proposed |
+| [007](./007-fable-off-limits-for-subagents-named-choices-win.md) | Fable is off limits for subagents; a named model or effort wins | 2026-11-17 | Accepted |
 
 ## Convention
 

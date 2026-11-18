@@ -1,7 +1,7 @@
 # ADR-007: Fable is off limits for subagents; a named model or effort wins
 
 - **Date:** 2026-11-17
-- **Status:** Proposed
+- **Status:** Accepted (2026-11-18, after a live check: a Fable parent's helper ran on claude-sonnet-5-5)
 - **Deciders:** Mod owner
 
 ## Context
