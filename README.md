@@ -63,7 +63,14 @@ This repository is also a plugin marketplace. Install from it, and Claude Code c
    2. Open the **Marketplaces** tab.
    3. Select `model-effort-router`.
    4. Select **Enable auto-update**.
-3. Restart Claude Code.
+3. Add your TypeSafe key. Inside a Claude Code session, run:
+
+   ```text
+   /plugin configure model-effort-router@model-effort-router
+   ```
+
+   Paste your key into the **TypeSafe API key** field and save. Claude Code keeps the key in the system keychain, not in `settings.json`. Skip this step to use the built-in classifier (see [Set up a backend](#set-up-a-backend)).
+4. Restart Claude Code.
 
 The mod has the id `model-effort-router@model-effort-router`. Its options go under that key in `pluginConfigs` (see [Options](#options)).
 
@@ -129,8 +136,9 @@ https://github.com/cmdaltctr/model-effort-router. Do these steps in order:
    claude plugin install model-effort-router --marketplace cmdaltctr/model-effort-router
 4. Run `claude plugin list` and show me that model-effort-router@model-effort-router is installed.
 5. Do not edit settings.json. Do not write an API key into any file.
-   If I want the TypeSafe backend, tell me to run this command myself:
-   claude plugin configure model-effort-router@model-effort-router --values-stdin
+   Tell me to add my TypeSafe key myself: in a Claude Code session, run
+   /plugin configure model-effort-router@model-effort-router
+   and paste the key into the TypeSafe API key field.
 6. Tell me to turn on auto-update: /plugin, Marketplaces tab, model-effort-router,
    Enable auto-update.
 7. Tell me to restart Claude Code.
@@ -151,13 +159,21 @@ The mod can use two backends. It picks the one whose key is set.
 
 TypeSafe's own API wins when both keys are set, because only it reports a calibrated confidence. Set `provider` to force one backend, or to `builtin` to use neither. If you force a backend and its key is missing, the mod uses the built-in classifier and logs this once.
 
-Store a key in the system keychain instead of in `settings.json`:
+To add a key, run this inside a Claude Code session, then paste the key into the **TypeSafe API key** (or **Vercel AI Gateway API key**) field:
+
+```text
+/plugin configure model-effort-router@model-effort-router
+```
+
+From a shell, send the key as JSON on standard input instead. This keeps the key out of your shell history:
 
 ```sh
 claude plugin configure model-effort-router@model-effort-router --values-stdin
 ```
 
-For a folder install, use the id `model-effort-router@inline`.
+Then type `{"typesafeApiKey": "<your key>"}` and press Ctrl-D.
+
+Both ways store the key in the system keychain, not in `settings.json`. For a folder install, use the id `model-effort-router@inline`.
 
 With no key set, the mod uses Claude Code's built-in classifier (`$.model.classify`). That classifier reports no confidence, so the mod only moves requests up, never down.
 
