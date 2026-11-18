@@ -69,11 +69,11 @@ import {
   namedEffort,
   offLimitsForSubagents,
   subagentFallback,
-} from './policy.ts'
-import { showSent, showSubagent } from './running.ts'
-import { applyRouterCommand, chatOf, routerOn, ROUTER_COMMANDS } from './chat.ts'
-import type { ChatOverride, Held } from './chat.ts'
-import type { Decision, Effort, PolicyConfig, Provider, Tier } from './policy.ts'
+} from './policy'
+import { showSent, showSubagent } from './running'
+import { applyRouterCommand, chatOf, routerOn, ROUTER_COMMANDS } from './chat'
+import type { ChatOverride, Held } from './chat'
+import type { Decision, Effort, PolicyConfig, Provider, Tier } from './policy'
 
 // A module may hook `turn.step` once, so the footer's label is fed from here,
 // with the request as it is actually sent.

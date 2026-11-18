@@ -26,7 +26,7 @@ export function effortName(effort: unknown): string | null {
  * Records a main-loop request as it is sent. The request as the engine built it,
  * before the router, carries the session's setting: that is the ⤷ baseline.
  */
-export async function showSent($: any, model: string, effort: unknown, built: { model: string; effort: unknown }): Promise<void> {
+export async function showSent($: any, model: string, effort: unknown, built: { model: string; effort?: unknown }): Promise<void> {
   await update($, running, () => ({
     model,
     effort: effortName(effort),

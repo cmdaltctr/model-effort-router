@@ -1,10 +1,10 @@
 import { atom, read, update } from 'claude-code'
-import type { Register } from 'claude-code'
+import type { Register, RenderChildren } from 'claude-code'
 
 import type { Running, Subagents } from '../types'
-import { clearSubagents, effortName } from './running.ts'
-import { registerRouter } from './router.ts'
-import { ROUTER_COMMANDS } from './chat.ts'
+import { clearSubagents, effortName } from './running'
+import { registerRouter } from './router'
+import { ROUTER_COMMANDS } from './chat'
 
 // Session model and effort, drawn in the prompt footer just left of the OMMS
 // label: `Opus 5.5 / high · ● omms: connected`. The model and effort are blue.
@@ -72,7 +72,7 @@ function insertBefore(node: unknown, label: unknown[]): unknown | null {
 
 /** `claude-opus-5-5` and `opus` are one model: compared by family name. */
 function family(model: string | null): string | null {
-  return model ? modelName(model).split(' ')[0].toLowerCase() : null
+  return model ? (modelName(model).split(' ')[0]?.toLowerCase() ?? null) : null
 }
 
 type Label = { mark: boolean; model: string; effort: string | null }
@@ -95,7 +95,7 @@ export function subagentLabel(parent: Running, seen: Subagents, agentId: string)
 }
 
 /** `⤷ Haiku 5.5 / high`: the ⤷ only when marked, the model and effort blue. */
-function labelParts(label: Label, Text: any): unknown[] {
+function labelParts(label: Label, Text: any): RenderChildren[] {
   return [
     ...(label.mark ? [<Text dimColor>⤷ </Text>] : []),
     <Text color={BLUE}>{modelName(label.model)}</Text>,
@@ -114,7 +114,7 @@ export const register: Register = (on, options) => {
     const model = await $.session.model()
     const settings = await $.settings.read()
     // /effort saves per model (`modelSettings`), which the engine reads first.
-    const effort = effortName(settings.modelSettings?.[model]?.effortLevel ?? settings.effortLevel)
+    const effort = effortName((settings.modelSettings as Record<string, { effortLevel?: unknown }> | undefined)?.[model]?.effortLevel ?? settings.effortLevel)
     await update($, running, now => ({
       model: model || now.model,
       effort: effort ?? now.effort,

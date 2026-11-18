@@ -1,5 +1,5 @@
-import { EFFORT_ORDER } from './policy.ts'
-import type { Effort } from './policy.ts'
+import { EFFORT_ORDER } from './policy'
+import type { Effort } from './policy'
 
 /**
  * What the person set for this chat with a `/router-...` command. `null` means

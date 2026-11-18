@@ -528,7 +528,7 @@ export function delegationNote(
   if (!model || !decision) return null
   return (
     `[model-effort-router] Jev rates this task ${decision.tier} ` +
-    `(${model}, confidence ${decision.confidence.toFixed(2)}), cheaper than this conversation's model. ` +
+    `(${model}, confidence ${decision.confidence?.toFixed(2) ?? 'n/d'}), cheaper than this conversation's model. ` +
     `Delegate it: start a subagent with the Agent tool and write its prompt with the context it needs; ` +
     `the router gives that subagent the cheaper model. Do it here only when it is a reply to this ` +
     `conversation (a yes, a follow-up, an edit to work in progress). If the user named a model or ` +

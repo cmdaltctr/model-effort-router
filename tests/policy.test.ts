@@ -22,8 +22,8 @@ import {
   namedEffort,
   offLimitsForSubagents,
   subagentFallback,
-} from '../hooks/policy.ts'
-import type { Decision, PolicyConfig } from '../hooks/policy.ts'
+} from '../hooks/policy'
+import type { Decision, PolicyConfig } from '../hooks/policy'
 
 const config: PolicyConfig = {
   tiers: { fast: 'haiku', balanced: 'sonnet', deep: 'opus' },
@@ -52,8 +52,8 @@ const on = (model: string, effort?: string) => ({ model, effort })
 test('confidence is the highest probability, since the Gateway sends no confidence field', () => {
   const decision = readDecision(gatewayAnswer('balanced', { fast: 0.1, balanced: 0.85, deep: 0.05 }))
   expect(decision?.tier).toBe('balanced')
-  expect(Math.abs((decision?.confidence) - (0.85)) < 0.005).toBe(true)
-  expect(Math.abs((decision?.effort) - (1.4)) < 0.005).toBe(true)
+  expect(Math.abs((decision?.confidence ?? NaN) - (0.85)) < 0.005).toBe(true)
+  expect(Math.abs((decision?.effort ?? NaN) - (1.4)) < 0.005).toBe(true)
 })
 
 test('a distribution is optional in the response schema, so confidence may be absent', () => {
@@ -182,9 +182,9 @@ const typesafeAnswer = (tier: string, confidence: number, noul = 0.01) =>
 test('a TypeSafe answer is read from its own confidence and noul fields', () => {
   const decision = readDecision(typesafeAnswer('deep', 0.91, 0.04))
   expect(decision?.tier).toBe('deep')
-  expect(Math.abs((decision?.confidence) - (0.91)) < 0.005).toBe(true)
-  expect(Math.abs((decision?.effort) - (2.1)) < 0.005).toBe(true)
-  expect(Math.abs((decision?.risky) - (0.04)) < 0.005).toBe(true)
+  expect(Math.abs((decision?.confidence ?? NaN) - (0.91)) < 0.005).toBe(true)
+  expect(Math.abs((decision?.effort ?? NaN) - (2.1)) < 0.005).toBe(true)
+  expect(Math.abs((decision?.risky ?? NaN) - (0.04)) < 0.005).toBe(true)
 })
 
 test('a low-confidence TypeSafe downgrade is refused, like the Gateway path', () => {
