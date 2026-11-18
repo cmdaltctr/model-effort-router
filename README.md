@@ -43,13 +43,56 @@ The footer shows the model and the effort of each request, for example `Opus 5.5
 
 ## Requirements
 
-- Claude Code 2.1.259 or later.
-- Function hooks turned on: `CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1`.
+- Claude Code 2.1.292 or later for the one-step install below. Claude Code 2.1.287 and later run mods with no extra setting.
 - Optional: a TypeSafe API key or a Vercel AI Gateway key. Without a key, the mod uses Claude Code's built-in classifier.
 
 ## Install
 
-1. Clone the repository to `~/.claude/mods/model-effort-router`:
+This repository is also a plugin marketplace. Install from it, and Claude Code can update the mod for you.
+
+1. Install the mod from your shell:
+
+   ```sh
+   claude plugin install model-effort-router --marketplace cmdaltctr/model-effort-router
+   ```
+
+   Inside a Claude Code session, you can use `/plugin install model-effort-router --marketplace cmdaltctr/model-effort-router` instead. Then choose a scope.
+
+2. Turn on auto-update. Auto-update is off by default for marketplaces that Anthropic does not run.
+   1. Run `/plugin`.
+   2. Open the **Marketplaces** tab.
+   3. Select `model-effort-router`.
+   4. Select **Enable auto-update**.
+3. Restart Claude Code.
+
+The mod has the id `model-effort-router@model-effort-router`. Its options go under that key in `pluginConfigs` (see [Options](#options)).
+
+### Updates
+
+Claude Code checks for a new version during an interactive session, up to ten minutes after your first message. When it finds one, it shows `Plugin updated: model-effort-router · Run /reload-plugins to apply`. Run `/reload-plugins`, or restart Claude Code.
+
+To update now:
+
+```sh
+claude plugin update model-effort-router@model-effort-router
+```
+
+Claude Code compares the `version` in `.claude-plugin/plugin.json`. A push with no version change does not reach installed copies.
+
+### Uninstall
+
+```sh
+claude plugin uninstall model-effort-router@model-effort-router
+claude plugin marketplace remove model-effort-router
+```
+
+Removing the marketplace also deletes the saved options and keys of the mod.
+
+### Install from a folder (development)
+
+Use this method to change the code. The mod then has the id `model-effort-router@inline`, and it does not update by itself.
+
+1. Clone the repository:
 
    ```sh
    git clone https://github.com/cmdaltctr/model-effort-router.git ~/.claude/mods/model-effort-router
@@ -60,55 +103,40 @@ The footer shows the model and the effort of each request, for example `Opus 5.5
    ```json
    {
      "env": {
-       "CLAUDE_CODE_ENABLE_FUNCTION_HOOKS": "1",
        "CLAUDE_CODE_PLUGIN_DIRS": "~/.claude/mods/model-effort-router"
      }
    }
    ```
 
-3. Restart Claude Code. Claude Code reads environment variables only at startup.
-4. Check the mod:
+3. Restart Claude Code.
 
-   ```sh
-   claude plugin validate ~/.claude/mods/model-effort-router
-   ```
-
-A mod loaded this way has the id `model-effort-router@inline`. Its options go under that key in `pluginConfigs` (see [Options](#options)).
-
-To try the mod for one session only, load it on the command line:
-
-```sh
-CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1 claude --plugin-dir ~/.claude/mods/model-effort-router
-```
-
-To update the mod, run `git -C ~/.claude/mods/model-effort-router pull`, then restart Claude Code.
+A folder copy replaces a marketplace copy with the same name. Do not use both methods on one machine. To try the mod for one session only, run `claude --plugin-dir ~/.claude/mods/model-effort-router`. On Claude Code older than 2.1.287, also set `CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1`.
 
 <details>
 <summary><strong>Agent instructions: let a coding agent install the mod</strong></summary>
 
-Paste this prompt into Claude Code or another coding agent. The agent does the steps above and stops before it restarts anything.
+Paste this prompt into Claude Code or another coding agent. The agent installs the mod and stops before it restarts anything.
 
 ```text
-Install the Claude Code mod "model-effort-router" from
+Install the Claude Code mod "model-effort-router" from the marketplace at
 https://github.com/cmdaltctr/model-effort-router. Do these steps in order:
 
-1. Check that `claude --version` is 2.1.259 or later. If it is older, stop and tell me.
-2. If ~/.claude/mods/model-effort-router exists, run `git pull` in it.
-   Otherwise run:
-   git clone https://github.com/cmdaltctr/model-effort-router.git ~/.claude/mods/model-effort-router
-3. Read ~/.claude/settings.json. Make a backup copy next to it before you change it.
-4. In the "env" block, set "CLAUDE_CODE_ENABLE_FUNCTION_HOOKS" to "1".
-5. In the "env" block, add ~/.claude/mods/model-effort-router to "CLAUDE_CODE_PLUGIN_DIRS".
-   If the variable already has folders, append the new folder with ":" (";" on Windows).
-   Do not remove the folders that are there. Do not add the folder twice.
-6. Keep all other keys in settings.json unchanged. Check that the file is valid JSON.
-7. Run `claude plugin validate ~/.claude/mods/model-effort-router` and show me the result.
-8. Do not write an API key into any file. If I want the TypeSafe backend, tell me to run
-   `claude plugin configure model-effort-router@inline --values-stdin` myself.
-9. Tell me to restart Claude Code. Environment variables load only at startup.
+1. Run `claude --version`. If it is older than 2.1.292, stop and tell me.
+2. Run `claude plugin list`. If model-effort-router@inline is listed, or
+   ~/.claude/settings.json has the folder in CLAUDE_CODE_PLUGIN_DIRS, stop and tell me.
+   A folder copy replaces the marketplace copy.
+3. Run:
+   claude plugin install model-effort-router --marketplace cmdaltctr/model-effort-router
+4. Run `claude plugin list` and show me that model-effort-router@model-effort-router is installed.
+5. Do not edit settings.json. Do not write an API key into any file.
+   If I want the TypeSafe backend, tell me to run this command myself:
+   claude plugin configure model-effort-router@model-effort-router --values-stdin
+6. Tell me to turn on auto-update: /plugin, Marketplaces tab, model-effort-router,
+   Enable auto-update.
+7. Tell me to restart Claude Code.
 ```
 
-After the restart, run `claude --debug` and look for `hooks module model-effort-router@inline loaded`. See [Troubleshooting](#troubleshooting) if the line is missing.
+After the restart, run `claude --debug` and look for `hooks module model-effort-router@model-effort-router loaded`. See [Troubleshooting](#troubleshooting) if the line is missing.
 
 </details>
 
@@ -126,8 +154,10 @@ TypeSafe's own API wins when both keys are set, because only it reports a calibr
 Store a key in the system keychain instead of in `settings.json`:
 
 ```sh
-claude plugin configure model-effort-router@inline --values-stdin
+claude plugin configure model-effort-router@model-effort-router --values-stdin
 ```
+
+For a folder install, use the id `model-effort-router@inline`.
 
 With no key set, the mod uses Claude Code's built-in classifier (`$.model.classify`). That classifier reports no confidence, so the mod only moves requests up, never down.
 
@@ -256,12 +286,14 @@ Set options in `/config`, or in `pluginConfigs` in your user settings (`~/.claud
 ```json
 {
   "pluginConfigs": {
-    "model-effort-router@inline": {
+    "model-effort-router@model-effort-router": {
       "options": { "provider": "typesafe", "suggestDelegation": true }
     }
   }
 }
 ```
+
+For a folder install, the key is `model-effort-router@inline`.
 
 The key must match the plugin's id. Under the wrong key, every option stays at its default and the `ready on` log line says `no key set`.
 
@@ -338,10 +370,10 @@ With `logDecisions` on, the mod logs each step. Claude Code shows nothing else a
 **No log lines at all.** Check these causes in this order:
 
 1. **You ran `claude -p` or the SDK.** A headless run has no transcript. The lines go to the debug log, `~/.claude/debug/<session-id>.txt` (`latest` links to the newest). An SDK host receives each line as `ui_log`.
-2. **The mod did not load.** Run `claude --debug`. A loaded module prints `hooks module model-effort-router@inline loaded (…); events: …`. Check `CLAUDE_CODE_PLUGIN_DIRS`, then restart Claude Code.
-3. **Function hooks are off.** The debug log says `installed plugins' hooks modules not loaded: rollout flag (tengu_plugin_hooks_modules) is off`. Set `CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1`.
+2. **The mod did not load.** Run `claude --debug`. A loaded module prints `hooks module model-effort-router@model-effort-router loaded (…); events: …`. Run `claude plugin list` to check that the mod is installed and enabled. For a folder install, check `CLAUDE_CODE_PLUGIN_DIRS`. Then restart Claude Code.
+3. **Function hooks are off.** The debug log says `installed plugins' hooks modules not loaded: rollout flag (tengu_plugin_hooks_modules) is off`. Update Claude Code to 2.1.287 or later, or set `CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1`.
 
-**`ready on the built-in classifier, no key set` when you set a key.** The key is under the wrong `pluginConfigs` entry. Use `model-effort-router@inline`.
+**`ready on the built-in classifier, no key set` when you set a key.** The key is under the wrong `pluginConfigs` entry. Use `model-effort-router@model-effort-router`, or `model-effort-router@inline` for a folder install.
 
 **The footer shows the parent's label while you view a subagent.** This is expected. Claude Code does not tell the footer which transcript is on screen. The band above the prompt shows the subagent's label.
 
@@ -382,6 +414,7 @@ claude plugin validate .
 
 ### Notes
 
+- To release a change to marketplace users, raise `version` in `.claude-plugin/plugin.json`, then push to `main`. Installed copies ignore a push with no version change.
 - Mods are early access. The `$` API can change between Claude Code releases. The types follow Anthropic's declarations: https://github.com/anthropics/claude-code/tree/main/mods
 - A mod runs without `node_modules`. The mod talks to both backends over HTTP through `$.http.fetch`. The TypeSafe wire shape comes from `@typesafe-ai/sdk` v0.6.0. The Gateway's shape is experimental and undocumented; it comes from `@ai-sdk/gateway` v4.0.86 and `@ai-sdk/provider` v4.0.17. Either can change.
 

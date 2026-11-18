@@ -1,0 +1,15 @@
+{
+  "name": "model-effort-router",
+  "owner": {
+    "name": "Dr Muhammad Aizat Hawari",
+    "url": "https://github.com/cmdaltctr"
+  },
+  "description": "Model and effort router for Claude Code",
+  "plugins": [
+    {
+      "name": "model-effort-router",
+      "source": "./",
+      "description": "Routes reasoning effort and subagent models with TypeSafe's Jev, and shows the model and effort in the prompt footer"
+    }
+  ]
+}
